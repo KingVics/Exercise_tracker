@@ -92,8 +92,7 @@ app.get('/api/users/:_id/logs', async function(req, res){
   let queryObject = {userId: result._id}
 
   if(new Date(from).toString() && new Date(to).toString()) {
-    queryObject.date = {$gte: new Date(from).toString()}
-    queryObject.date = {$$lt: new Date(to).toString()}
+    queryObject.date = { $gte: new Date(from).toString(), $lte: new Date(to).toString() };
   }
   const allexercises  = await ExerciseModel.find(queryObject).limit(limit).select({description: 1, duration:1, date:1, _id: 0})
 
