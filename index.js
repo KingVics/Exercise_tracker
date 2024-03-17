@@ -5,6 +5,7 @@ const app = express()
 const cors = require('cors')
 const connectDB = require('./db/connect');
 const UserModel = require('./model/user')
+const ExerciseModel = require('./model/exercise')
 
 app.use(cors())
 app.use(bodyParser.urlencoded({extended: false}))
@@ -29,7 +30,13 @@ app.post('/api/users', async function(req, res) {
 
 app.get('/api/users', async function(req, res){
   await UserModel.find({}).then((doc) => {
-    res.json({users: doc})
+    const users = doc.map((item) => {
+      return {
+        username: item.username,
+        _id: item._id
+      }
+    })
+    res.send([...users])
   }).catch((err) => {
     return res.json({error: err})
   })
@@ -41,18 +48,27 @@ app.post('/api/users/:_id/exercises', async function(req, res){
 
   const { description, duration, date} = req.body
 
-  const usedDate = date ? new Date(date).toString() :  new Date()
+  const usedDate = date && date.length > 0 ? new Date(date).toString() :  new Date()
 
   if(usedDate?.toString() === 'Invalid Date') {
     res.json({error: 'Invalid date'})
   }
-  await UserModel.findByIdAndUpdate({_id}, {
-    description,
-    duration,
-    date: usedDate
-
-  }, {new: true}).then((doc) => {
-    res.json({user: doc})
+  await UserModel.findOne({_id}).then(async (doc) => {
+   await ExerciseModel.create({
+      userId: doc._id,
+      date: new Date(usedDate).toDateString(),
+      duration: duration,
+      description:description
+      
+   }).then((exercise) => {
+    res.json({
+      _id: _id,
+      username: doc.username,
+      date:exercise.date,
+      duration: exercise.duration,
+      description: exercise.description
+    })
+   })
   }).catch((err) => {
     return res.json({error: err})
   })
@@ -64,27 +80,42 @@ app.post('/api/users/:_id/exercises', async function(req, res){
 app.get('/api/users/:_id/logs', async function(req, res){
   const _id = req.params._id
   const limit = req.query.limit || 2
+  const from = req.query.from
+  const to = req.query.to
 
-  const result = await UserModel.find({_id}).limit(limit)
+  const result = await UserModel.findOne({_id})
 
-  if(!result) {
+  if(!result || !result._id) {
     return res.json({error: 'User not found'})
   }
 
-  const data = result.map((item) => {
+  let queryObject = {userId: result._id}
+
+  if(new Date(from).toString() && new Date(to).toString()) {
+    queryObject.date = {$gte: new Date(from).toString()}
+    queryObject.date = {$$lt: new Date(to).toString()}
+  }
+  const allexercises  = await ExerciseModel.find(queryObject).limit(limit).select({description: 1, duration:1, date:1, _id: 0})
+
+  const exercises = allexercises.length > 0 ? allexercises.map((item) => {
     return {
-      _id: item._id,
-      username: item.username,
-      description: item.description,
+      description: item.description.toString(),
       duration: Number(item.duration),
       date: new Date(item.date).toDateString()
     }
-  })
-  res.json({user: data})
+  }) : []
+
+  const user = {
+    _id:result._id,
+    username: result.username,
+    count: exercises.length,
+    log: exercises 
+  }
+  res.json(user)
 })
 
 
-const port = process.env.PORT || 8000
+const port = process.env.PORT || 3000
 
 const start = async () => {
   try {
